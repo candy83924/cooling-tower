@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "微軟正黑體", "Noto Sans TC", sans-serif; background: #f5f7fa; color: #2c3e50; display: flex; min-height: 100vh; }
@@ -1084,47 +1085,94 @@ function exportExcel() {
   var dT = p.T_in - p.T_out;
   var C_val = p.season === 'summer' ? 1.0 : 0.8;
   var splashRate = p.tower_type === 'counter' ? 0.001 : 0.003;
-
-  var wb = XLSX.utils.book_new();
-
-  // Styling helpers: XLSX community edition doesn't support styles natively,
-  // but we structure data clearly with headers and spacing.
-
-  // ===== Sheet 1: 輸入參數 =====
-  var s1 = [
-    ['冷卻水塔 - 輸入參數'],
-    ['專案：' + proj + '  |  計算人員：' + engineer + '  |  日期：' + dateStr],
-    [],
-    ['參數', '數值', '單位'],
-    ['循環水量 (Q)', p.Q, 'm³/h'],
-    ['進水溫度 (T_in)', p.T_in, '°C'],
-    ['出水溫度 (T_out)', p.T_out, '°C'],
-    ['溫差 (ΔT)', dT, '°C'],
-    ['乾球溫度 (Tdb)', p.Tdb, '°C'],
-    ['濕球溫度 (Twb)', p.Twb, '°C'],
-    ['空氣流量 (G)', p.G, 'm³/h'],
-    ['填料特性係數 (KaV/L)', p.KaV_L, '-'],
-    ['濃縮倍數 (COC)', p.COC, '-'],
-    ['水塔類型', towerLabel, '-'],
-    ['季節', seasonLabel, '-'],
-    ['大氣壓力', 101.325, 'kPa'],
-    ['水的密度', 1000, 'kg/m³'],
-    ['水的比熱', 4.186, 'kJ/(kg·°C)'],
-    ['空氣密度（近似）', 1.2, 'kg/m³']
-  ];
-  var ws1 = XLSX.utils.aoa_to_sheet(s1);
-  ws1['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 18 }];
-  ws1['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } }];
-  XLSX.utils.book_append_sheet(wb, ws1, '輸入參數');
-
-  // ===== Sheet 2: 計算過程 =====
   var L_mass = p.Q * 1000 / 3600;
   var G_mass = p.G * 1.2 / 3600;
-  var s2 = [
-    ['逐步計算過程'],
-    [],
-    ['步驟', '公式', '代入數值', '計算結果'],
-    ['1. 溫差計算', 'ΔT = T_in - T_out', p.T_in + ' - ' + p.T_out, dT.toFixed(1) + ' °C'],
+
+  var wb = new ExcelJS.Workbook();
+
+  // Style constants
+  var HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A5276' } };
+  var ALT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2F8' } };
+  var HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Arial' };
+  var TITLE_FONT = { bold: true, size: 14, color: { argb: 'FF1A5276' }, name: 'Arial' };
+  var SUBTITLE_FONT = { bold: true, size: 11, color: { argb: 'FF2C3E50' }, name: 'Arial' };
+  var NORMAL_FONT = { size: 10, name: 'Arial' };
+  var FORMULA_FONT = { size: 10, color: { argb: 'FF0000FF' }, name: 'Arial' };
+  var INFO_FONT = { size: 9, color: { argb: 'FF666666' }, name: 'Arial' };
+  var THIN_BORDER = {
+    top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+    left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+    bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+    right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+  };
+
+  function styleHeaderRow(ws, rowNum, colCount) {
+    var row = ws.getRow(rowNum);
+    for (var i = 1; i <= colCount; i++) {
+      var cell = row.getCell(i);
+      cell.fill = HEADER_FILL;
+      cell.font = HEADER_FONT;
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = THIN_BORDER;
+    }
+  }
+
+  function styleDataRow(ws, rowNum, colCount, isAlt, leftCols) {
+    leftCols = leftCols || [1];
+    var row = ws.getRow(rowNum);
+    for (var i = 1; i <= colCount; i++) {
+      var cell = row.getCell(i);
+      cell.font = NORMAL_FONT;
+      cell.border = THIN_BORDER;
+      cell.alignment = { horizontal: leftCols.indexOf(i) >= 0 ? 'left' : 'center', vertical: 'middle', wrapText: true };
+      if (isAlt) cell.fill = ALT_FILL;
+    }
+  }
+
+  // ===== Sheet 1: 輸入參數 =====
+  var ws1 = wb.addWorksheet('輸入參數', { properties: { tabColor: { argb: 'FF1A5276' } } });
+  ws1.columns = [{ width: 28 }, { width: 18 }, { width: 18 }];
+
+  ws1.mergeCells('A1:C1');
+  ws1.getCell('A1').value = '冷卻水塔 - 輸入參數';
+  ws1.getCell('A1').font = TITLE_FONT;
+
+  ws1.mergeCells('A2:C2');
+  ws1.getCell('A2').value = '專案：' + proj + '  |  計算人員：' + engineer + '  |  日期：' + dateStr;
+  ws1.getCell('A2').font = INFO_FONT;
+
+  ws1.getRow(4).values = ['參數', '數值', '單位'];
+  styleHeaderRow(ws1, 4, 3);
+
+  var paramRows = [
+    ['循環水量 (Q)', p.Q, 'm³/h'], ['進水溫度 (T_in)', p.T_in, '°C'],
+    ['出水溫度 (T_out)', p.T_out, '°C'], ['溫差 (ΔT)', dT, '°C'],
+    ['乾球溫度 (Tdb)', p.Tdb, '°C'], ['濕球溫度 (Twb)', p.Twb, '°C'],
+    ['空氣流量 (G)', p.G, 'm³/h'], ['填料特性係數 (KaV/L)', p.KaV_L, '-'],
+    ['濃縮倍數 (COC)', p.COC, '-'], ['水塔類型', towerLabel, '-'],
+    ['季節', seasonLabel, '-'], ['大氣壓力', 101.325, 'kPa'],
+    ['水的密度', 1000, 'kg/m³'], ['水的比熱', 4.186, 'kJ/(kg·°C)'],
+    ['空氣密度（近似）', 1.2, 'kg/m³']
+  ];
+  for (var i = 0; i < paramRows.length; i++) {
+    var rn = 5 + i;
+    ws1.getRow(rn).values = paramRows[i];
+    styleDataRow(ws1, rn, 3, i % 2 === 1);
+  }
+
+  // ===== Sheet 2: 計算過程 =====
+  var ws2 = wb.addWorksheet('計算過程', { properties: { tabColor: { argb: 'FF27AE60' } } });
+  ws2.columns = [{ width: 25 }, { width: 35 }, { width: 40 }, { width: 22 }];
+
+  ws2.mergeCells('A1:D1');
+  ws2.getCell('A1').value = '逐步計算過程';
+  ws2.getCell('A1').font = TITLE_FONT;
+
+  ws2.getRow(3).values = ['步驟', '公式', '代入數值', '計算結果'];
+  styleHeaderRow(ws2, 3, 4);
+
+  var steps = [
+    ['1. 溫差計算', 'ΔT = T_in - T_out', p.T_in.toFixed(1) + ' - ' + p.T_out.toFixed(1), dT.toFixed(1) + ' °C'],
     ['2. 蒸發係數 (C)', 'C = ' + (C_val === 1.0 ? '1.0（夏季）' : '0.8（冬季）'), '-', C_val.toString()],
     ['3. 簡易公式蒸發量', 'E = C × ΔT × Q / 600', C_val + ' × ' + dT.toFixed(1) + ' × ' + p.Q.toFixed(1) + ' / 600', r.E_simple.toFixed(4) + ' m³/h'],
     ['', '', '', ''],
@@ -1142,140 +1190,150 @@ function exportExcel() {
     ['13. 冷卻範圍', '範圍 = T_in - T_out', p.T_in.toFixed(1) + ' - ' + p.T_out.toFixed(1), md.T_range.toFixed(1) + ' °C'],
     ['14. 冷卻效率', 'η = 範圍 / (範圍 + 逼近)', md.T_range.toFixed(1) + ' / (' + md.T_range.toFixed(1) + ' + ' + md.T_approach.toFixed(1) + ')', md.efficiency.toFixed(1) + ' %']
   ];
-  var ws2 = XLSX.utils.aoa_to_sheet(s2);
-  ws2['!cols'] = [{ wch: 25 }, { wch: 35 }, { wch: 40 }, { wch: 22 }];
-  ws2['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
-  XLSX.utils.book_append_sheet(wb, ws2, '計算過程');
-
-  // ===== Sheet 3: 結果摘要 (with Excel formulas) =====
-  // Row 1: title, Row 2: blank, Row 3: subtitle, Row 4: header
-  // Rows 5-10: editable inputs, Row 12: subtitle, Row 13: header, Rows 14-20: formulas
-  var s3 = [
-    ['結果摘要（含即時公式）', '', '', ''],
-    [],
-    ['可編輯輸入值'],
-    ['參數', '數值', '單位'],
-    ['循環水量', p.Q, 'm³/h'],        // row 5 -> B5
-    ['進水溫度', p.T_in, '°C'],       // row 6 -> B6
-    ['出水溫度', p.T_out, '°C'],      // row 7 -> B7
-    ['蒸發係數', C_val, '-'],          // row 8 -> B8
-    ['濃縮倍數', p.COC, '-'],         // row 9 -> B9
-    ['飛濺損失率', splashRate, '-'],   // row 10 -> B10
-    [],
-    ['計算結果（自動更新）'],
-    ['項目', '公式說明', '計算結果', '單位']
-  ];
-  var ws3 = XLSX.utils.aoa_to_sheet(s3);
-
-  // Formula rows start at row 14 (0-indexed: 13)
-  var formulaRows = [
-    ['ΔT（溫差）', 'B6-B7', { f: 'B6-B7' }, '°C'],
-    ['簡易公式蒸發量', 'B8*(B6-B7)*B5/600', { f: 'B8*(B6-B7)*B5/600' }, 'm³/h'],
-    ['飛濺損失', 'B10*B5', { f: 'B10*B5' }, 'm³/h'],
-    ['排污損失（估算）', 'B8*(B6-B7)*B5/600/(B9-1)', { f: 'B8*(B6-B7)*B5/600/(B9-1)' }, 'm³/h'],
-    ['總補給水量（簡易）', '蒸發+飛濺+排污', { f: 'B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1)' }, 'm³/h'],
-    ['每日補給水量', '總補給×24', { f: '(B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1))*24' }, 'm³/日'],
-    ['每月補給水量', '總補給×24×30', { f: '(B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1))*24*30' }, 'm³/月']
-  ];
-
-  for (var fi = 0; fi < formulaRows.length; fi++) {
-    var rowIdx = 13 + fi; // 0-indexed
-    var fr = formulaRows[fi];
-    XLSX.utils.sheet_add_aoa(ws3, [[fr[0], fr[1], null, fr[3]]], { origin: { r: rowIdx, c: 0 } });
-    // Write formula cell
-    var cellRef = XLSX.utils.encode_cell({ r: rowIdx, c: 2 });
-    ws3[cellRef] = { f: fr[2].f };
+  for (var i = 0; i < steps.length; i++) {
+    var rn = 4 + i;
+    ws2.getRow(rn).values = steps[i];
+    if (steps[i][0] !== '') {
+      styleDataRow(ws2, rn, 4, i % 2 === 1, [1, 2, 3]);
+      ws2.getCell('B' + rn).font = FORMULA_FONT;
+    }
   }
 
-  ws3['!cols'] = [{ wch: 22 }, { wch: 45 }, { wch: 20 }, { wch: 15 }];
-  ws3['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
-    { s: { r: 11, c: 0 }, e: { r: 11, c: 2 } }
+  // ===== Sheet 3: 結果摘要 =====
+  var ws3 = wb.addWorksheet('結果摘要', { properties: { tabColor: { argb: 'FFE74C3C' } } });
+  ws3.columns = [{ width: 22 }, { width: 45 }, { width: 20 }, { width: 15 }];
+
+  ws3.mergeCells('A1:C1');
+  ws3.getCell('A1').value = '結果摘要（含即時公式）';
+  ws3.getCell('A1').font = TITLE_FONT;
+
+  ws3.getCell('A3').value = '可編輯輸入值';
+  ws3.getCell('A3').font = SUBTITLE_FONT;
+
+  ws3.getRow(4).values = ['參數', '數值', '單位'];
+  styleHeaderRow(ws3, 4, 3);
+
+  var editInputs = [
+    ['循環水量', p.Q, 'm³/h'],
+    ['進水溫度', p.T_in, '°C'],
+    ['出水溫度', p.T_out, '°C'],
+    ['蒸發係數', C_val, '-'],
+    ['濃縮倍數', p.COC, '-'],
+    ['飛濺損失率', splashRate, '-']
   ];
-  XLSX.utils.book_append_sheet(wb, ws3, '結果摘要');
+  for (var i = 0; i < editInputs.length; i++) {
+    var rn = 5 + i;
+    ws3.getRow(rn).values = editInputs[i];
+    styleDataRow(ws3, rn, 3, false, [1]);
+    ws3.getCell('B' + rn).font = { bold: true, size: 10, color: { argb: 'FF0000FF' }, name: 'Arial' };
+  }
+
+  ws3.getCell('A12').value = '計算結果（自動更新）';
+  ws3.getCell('A12').font = SUBTITLE_FONT;
+
+  ws3.getRow(13).values = ['項目', '公式說明', '計算結果', '單位'];
+  styleHeaderRow(ws3, 13, 4);
+
+  var formulaDefs = [
+    ['ΔT（溫差）', 'B6-B7', 'B6-B7', '°C'],
+    ['簡易公式蒸發量', 'B8*(B6-B7)*B5/600', 'B8*(B6-B7)*B5/600', 'm³/h'],
+    ['飛濺損失', 'B10*B5', 'B10*B5', 'm³/h'],
+    ['排污損失（估算）', 'B8*(B6-B7)*B5/600/(B9-1)', 'B8*(B6-B7)*B5/600/(B9-1)', 'm³/h'],
+    ['總補給水量（簡易）', 'B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1)', 'B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1)', 'm³/h'],
+    ['每日補給水量', '(B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1))*24', '(B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1))*24', 'm³/日'],
+    ['每月補給水量', '(B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1))*24*30', '(B8*(B6-B7)*B5/600+B10*B5+B8*(B6-B7)*B5/600/(B9-1))*24*30', 'm³/月']
+  ];
+  for (var i = 0; i < formulaDefs.length; i++) {
+    var rn = 14 + i;
+    var fd = formulaDefs[i];
+    ws3.getCell('A' + rn).value = fd[0];
+    ws3.getCell('B' + rn).value = fd[1];
+    ws3.getCell('C' + rn).value = { formula: fd[2] };
+    ws3.getCell('D' + rn).value = fd[3];
+    styleDataRow(ws3, rn, 4, i % 2 === 1, [1, 2]);
+    ws3.getCell('B' + rn).font = { size: 9, color: { argb: 'FF888888' }, name: 'Arial' };
+    ws3.getCell('C' + rn).font = FORMULA_FONT;
+  }
 
   // ===== Sheet 4: 敏感度分析 =====
-  var s4 = [['敏感度分析矩陣'], []];
+  var ws4 = wb.addWorksheet('敏感度分析', { properties: { tabColor: { argb: 'FFF39C12' } } });
+  ws4.columns = [{ width: 30 }, { width: 22 }, { width: 22 }, { width: 25 }];
 
-  // 4a: ΔT sensitivity
-  s4.push(['溫差 (ΔT) 對蒸發量的影響']);
-  s4.push(['ΔT (°C)', '簡易蒸發量 (m³/h)', '總補給水量 (m³/h)']);
+  ws4.mergeCells('A1:H1');
+  ws4.getCell('A1').value = '敏感度分析矩陣';
+  ws4.getCell('A1').font = TITLE_FONT;
+
+  // 4a: ΔT
+  ws4.getCell('A3').value = '溫差 (ΔT) 對蒸發量的影響';
+  ws4.getCell('A3').font = SUBTITLE_FONT;
+
+  ws4.getRow(4).values = ['ΔT (°C)', '簡易蒸發量 (m³/h)', '總補給水量 (m³/h)'];
+  styleHeaderRow(ws4, 4, 3);
+
   var dtValues = [2, 3, 4, 5, 6, 7, 8, 10, 12, 15];
-  var dtStartRow = s4.length; // 0-indexed row where first data appears
-  for (var di = 0; di < dtValues.length; di++) {
-    s4.push([dtValues[di], null, null]);
+  for (var i = 0; i < dtValues.length; i++) {
+    var rn = 5 + i;
+    ws4.getCell('A' + rn).value = dtValues[i];
+    ws4.getCell('B' + rn).value = { formula: "'結果摘要'!B8*A" + rn + "*'結果摘要'!B5/600" };
+    ws4.getCell('C' + rn).value = { formula: "'結果摘要'!B8*A" + rn + "*'結果摘要'!B5/600+'結果摘要'!B10*'結果摘要'!B5+'結果摘要'!B8*A" + rn + "*'結果摘要'!B5/600/('結果摘要'!B9-1)" };
+    styleDataRow(ws4, rn, 3, i % 2 === 1, []);
+    ws4.getCell('B' + rn).font = FORMULA_FONT;
+    ws4.getCell('C' + rn).font = FORMULA_FONT;
   }
-  s4.push([]);
 
-  // 4b: COC sensitivity
-  var cocTitleRow = s4.length;
-  s4.push(['濃縮倍數 (COC) 對排污量的影響']);
-  s4.push(['COC', '排污量 (m³/h)', '總補給水量 (m³/h)', '相對 COC=2 節水率 (%)']);
+  // 4b: COC
+  var cocHdrRow = 17;
+  ws4.getCell('A' + cocHdrRow).value = '濃縮倍數 (COC) 對排污量的影響';
+  ws4.getCell('A' + cocHdrRow).font = SUBTITLE_FONT;
+
+  var cocTblHdr = cocHdrRow + 1;
+  ws4.getRow(cocTblHdr).values = ['COC', '排污量 (m³/h)', '總補給水量 (m³/h)', '相對 COC=2 節水率 (%)'];
+  styleHeaderRow(ws4, cocTblHdr, 4);
+
   var cocValues = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 10.0];
-  var cocStartRow = s4.length;
-  for (var ci = 0; ci < cocValues.length; ci++) {
-    s4.push([cocValues[ci], null, null, null]);
+  var coc2Ref = cocTblHdr + 2; // row for COC=2.0
+  for (var i = 0; i < cocValues.length; i++) {
+    var rn = cocTblHdr + 1 + i;
+    ws4.getCell('A' + rn).value = cocValues[i];
+    ws4.getCell('B' + rn).value = { formula: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*'結果摘要'!B5/600/(A" + rn + "-1)" };
+    ws4.getCell('C' + rn).value = { formula: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*'結果摘要'!B5/600+'結果摘要'!B10*'結果摘要'!B5+'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*'結果摘要'!B5/600/(A" + rn + "-1)" };
+    ws4.getCell('D' + rn).value = { formula: "IF(C" + coc2Ref + "=0,0,(1-C" + rn + "/C" + coc2Ref + ")*100)" };
+    styleDataRow(ws4, rn, 4, i % 2 === 1, []);
+    ws4.getCell('B' + rn).font = FORMULA_FONT;
+    ws4.getCell('C' + rn).font = FORMULA_FONT;
+    ws4.getCell('D' + rn).font = FORMULA_FONT;
   }
-  s4.push([]);
 
-  // 4c: Q sensitivity
-  var qTitleRow = s4.length;
-  s4.push(['循環水量 (Q) 對蒸發量的影響']);
-  s4.push(['Q (m³/h)', '蒸發量 (m³/h)', '總補給水量 (m³/h)']);
+  // 4c: Q
+  var qHdrRow = cocTblHdr + cocValues.length + 2;
+  ws4.getCell('A' + qHdrRow).value = '循環水量 (Q) 對蒸發量的影響';
+  ws4.getCell('A' + qHdrRow).font = SUBTITLE_FONT;
+
+  var qTblHdr = qHdrRow + 1;
+  ws4.getRow(qTblHdr).values = ['Q (m³/h)', '蒸發量 (m³/h)', '總補給水量 (m³/h)'];
+  styleHeaderRow(ws4, qTblHdr, 3);
+
   var qValues = [100, 200, 300, 500, 750, 1000, 1500, 2000];
-  var qStartRow = s4.length;
-  for (var qi = 0; qi < qValues.length; qi++) {
-    s4.push([qValues[qi], null, null]);
+  for (var i = 0; i < qValues.length; i++) {
+    var rn = qTblHdr + 1 + i;
+    ws4.getCell('A' + rn).value = qValues[i];
+    ws4.getCell('B' + rn).value = { formula: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*A" + rn + "/600" };
+    ws4.getCell('C' + rn).value = { formula: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*A" + rn + "/600+'結果摘要'!B10*A" + rn + "+'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*A" + rn + "/600/('結果摘要'!B9-1)" };
+    styleDataRow(ws4, rn, 3, i % 2 === 1, []);
+    ws4.getCell('B' + rn).font = FORMULA_FONT;
+    ws4.getCell('C' + rn).font = FORMULA_FONT;
   }
 
-  var ws4 = XLSX.utils.aoa_to_sheet(s4);
-
-  // Write formulas for ΔT sensitivity
-  // References to Sheet 3 editable cells: '結果摘要'!B8=C, '結果摘要'!B5=Q, '結果摘要'!B10=splash_rate, '結果摘要'!B9=COC
-  for (var di2 = 0; di2 < dtValues.length; di2++) {
-    var rr = dtStartRow + di2; // 0-indexed
-    var rr1 = rr + 1; // 1-indexed for formula
-    var bCell = XLSX.utils.encode_cell({ r: rr, c: 1 });
-    var cCell = XLSX.utils.encode_cell({ r: rr, c: 2 });
-    ws4[bCell] = { f: "'結果摘要'!B8*A" + rr1 + "*'結果摘要'!B5/600" };
-    ws4[cCell] = { f: "'結果摘要'!B8*A" + rr1 + "*'結果摘要'!B5/600+'結果摘要'!B10*'結果摘要'!B5+'結果摘要'!B8*A" + rr1 + "*'結果摘要'!B5/600/('結果摘要'!B9-1)" };
-  }
-
-  // Write formulas for COC sensitivity
-  var coc2Row1 = cocStartRow + 1 + 1; // 1-indexed row for COC=2.0 (second entry)
-  for (var ci2 = 0; ci2 < cocValues.length; ci2++) {
-    var rr = cocStartRow + ci2;
-    var rr1 = rr + 1;
-    var bCell = XLSX.utils.encode_cell({ r: rr, c: 1 });
-    var cCell = XLSX.utils.encode_cell({ r: rr, c: 2 });
-    var dCell = XLSX.utils.encode_cell({ r: rr, c: 3 });
-    ws4[bCell] = { f: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*'結果摘要'!B5/600/(A" + rr1 + "-1)" };
-    ws4[cCell] = { f: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*'結果摘要'!B5/600+'結果摘要'!B10*'結果摘要'!B5+'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*'結果摘要'!B5/600/(A" + rr1 + "-1)" };
-    ws4[dCell] = { f: "IF(C" + coc2Row1 + "=0,0,(1-C" + rr1 + "/C" + coc2Row1 + ")*100)" };
-  }
-
-  // Write formulas for Q sensitivity
-  for (var qi2 = 0; qi2 < qValues.length; qi2++) {
-    var rr = qStartRow + qi2;
-    var rr1 = rr + 1;
-    var bCell = XLSX.utils.encode_cell({ r: rr, c: 1 });
-    var cCell = XLSX.utils.encode_cell({ r: rr, c: 2 });
-    ws4[bCell] = { f: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*A" + rr1 + "/600" };
-    ws4[cCell] = { f: "'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*A" + rr1 + "/600+'結果摘要'!B10*A" + rr1 + "+'結果摘要'!B8*('結果摘要'!B6-'結果摘要'!B7)*A" + rr1 + "/600/('結果摘要'!B9-1)" };
-  }
-
-  ws4['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 22 }, { wch: 25 }];
-  ws4['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
-    { s: { r: cocTitleRow, c: 0 }, e: { r: cocTitleRow, c: 3 } },
-    { s: { r: qTitleRow, c: 0 }, e: { r: qTitleRow, c: 2 } }
-  ];
-  XLSX.utils.book_append_sheet(wb, ws4, '敏感度分析');
-
+  // Generate and download
   var d = p.calc_date || new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, '冷卻水塔計算表_' + d.replace(/-/g, '') + '.xlsx');
+  wb.xlsx.writeBuffer().then(function(buffer) {
+    var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '冷卻水塔計算表_' + d.replace(/-/g, '') + '.xlsx';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
 }
 
 // =============================================
