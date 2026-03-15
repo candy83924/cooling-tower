@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>冷卻水塔蒸發量計算系統</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "微軟正黑體", "Noto Sans TC", sans-serif; background: #f5f7fa; color: #2c3e50; display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar { width: 320px; min-width: 320px; background: #fff; border-right: 1px solid #ddd; padding: 20px; overflow-y: auto; height: 100vh; position: sticky; top: 0; }
+.sidebar h2 { font-size: 1.1rem; color: #1a5276; margin: 18px 0 10px 0; padding-bottom: 6px; border-bottom: 2px solid #eee; }
+.sidebar h2:first-child { margin-top: 0; }
+.sidebar label { display: block; font-size: 0.85rem; color: #555; margin: 8px 0 3px 0; }
+.sidebar input, .sidebar select { width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; background: #fafafa; }
+.sidebar input:focus, .sidebar select:focus { outline: none; border-color: #1a5276; background: #fff; }
+.sidebar hr { border: none; border-top: 1px solid #eee; margin: 14px 0; }
+
+/* Main content */
+.main { flex: 1; padding: 24px 30px; overflow-y: auto; }
+.main-title { font-size: 1.9rem; font-weight: 700; color: #1a5276; text-align: center; padding: 0.8rem 0; border-bottom: 3px solid #1a5276; margin-bottom: 1.5rem; }
+
+/* Error banner */
+.error-banner { background: #fdecea; border: 1px solid #e74c3c; color: #c0392b; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; display: none; }
+
+/* Metric cards */
+.metrics-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
+.metric-card { background: linear-gradient(135deg, #1a5276 0%, #2c3e50 100%); padding: 18px 14px; border-radius: 10px; color: #fff; text-align: center; }
+.metric-card h3 { font-size: 0.82rem; opacity: 0.9; margin: 0 0 6px 0; font-weight: 400; }
+.metric-card .value { font-size: 1.5rem; font-weight: 700; margin: 0; }
+.metric-card p { font-size: 0.72rem; opacity: 0.7; margin: 4px 0 0 0; }
+
+/* Section header */
+.section-header { color: #1a5276; font-size: 1.25rem; font-weight: 600; border-left: 4px solid #1a5276; padding-left: 0.8rem; margin: 28px 0 16px 0; }
+
+/* Tables */
+.tables-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px; }
+.table-wrap h4 { font-size: 0.95rem; color: #2c3e50; margin-bottom: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+table th { background: #1a5276; color: #fff; padding: 9px 12px; text-align: left; font-weight: 600; }
+table td { padding: 8px 12px; border-bottom: 1px solid #e0e0e0; }
+table tr:nth-child(even) td { background: #eaf2f8; }
+table tr:hover td { background: #d4e6f1; }
+
+/* Charts grid */
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px; }
+.chart-box { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+.chart-box canvas { width: 100% !important; max-height: 320px; }
+.chart-conclusion { font-size: 0.82rem; color: #555; margin-top: 10px; line-height: 1.5; padding: 8px; background: #f9f9f9; border-radius: 6px; border-left: 3px solid #1a5276; }
+
+/* Collapsible */
+.collapsible { background: #fff; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
+.collapsible-header { padding: 12px 16px; cursor: pointer; font-weight: 600; color: #1a5276; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+.collapsible-header:hover { background: #eaf2f8; }
+.collapsible-header .arrow { transition: transform 0.2s; }
+.collapsible-header.open .arrow { transform: rotate(90deg); }
+.collapsible-body { padding: 0 16px 14px 16px; display: none; }
+.collapsible-body.open { display: block; }
+
+/* Export buttons */
+.export-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 12px; }
+.export-card { background: #fff; border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+.export-card h4 { font-size: 0.95rem; color: #2c3e50; margin-bottom: 4px; }
+.export-card .caption { font-size: 0.78rem; color: #888; margin-bottom: 12px; }
+.export-btn { display: inline-block; width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 0.92rem; font-weight: 600; color: #fff; cursor: pointer; transition: opacity 0.2s; }
+.export-btn:hover { opacity: 0.85; }
+.btn-pdf { background: #e74c3c; }
+.btn-word { background: #2980b9; }
+.btn-excel { background: #27ae60; }
+
+/* Footer */
+.footer { text-align: center; color: #999; font-size: 0.78rem; margin-top: 30px; padding: 16px 0; border-top: 1px solid #eee; }
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .metrics-row { grid-template-columns: repeat(3, 1fr); }
+  .tables-row, .charts-grid { grid-template-columns: 1fr; }
+  .export-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 800px) {
+  body { flex-direction: column; }
+  .sidebar { width: 100%; min-width: unset; height: auto; position: relative; border-right: none; border-bottom: 1px solid #ddd; }
+  .metrics-row { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <h2>📋 專案資訊</h2>
+  <label>專案名稱</label>
+  <input type="text" id="project_name" value="冷卻水塔分析報告">
+  <label>計算人員</label>
+  <input type="text" id="engineer" value="工程師">
+  <label>日期</label>
+  <input type="date" id="calc_date">
+  <hr>
+  <h2>🌊 運轉參數</h2>
+  <label>循環水量 Q (m³/h)</label>
+  <input type="number" id="Q" value="500" min="1" max="50000" step="50">
+  <label>進水溫度 T_in (°C)</label>
+  <input type="number" id="T_in" value="37" min="10" max="60" step="0.5">
+  <label>出水溫度 T_out (°C)</label>
+  <input type="number" id="T_out" value="32" min="5" max="50" step="0.5">
+  <h2>🌡️ 環境條件</h2>
+  <label>乾球溫度 Tdb (°C)</label>
+  <input type="number" id="Tdb" value="35" min="-10" max="50" step="0.5">
+  <label>濕球溫度 Twb (°C)</label>
+  <input type="number" id="Twb" value="28" min="-10" max="45" step="0.5">
+  <h2>💨 風量與填料</h2>
+  <label>空氣流量 G (m³/h)</label>
+  <input type="number" id="G" value="400000" min="100" max="500000" step="10000">
+  <label>填料特性係數 KaV/L</label>
+  <input type="number" id="KaV_L" value="1.5" min="0.1" max="5.0" step="0.1">
+  <h2>⚙️ 水塔設定</h2>
+  <label>水塔類型</label>
+  <select id="tower_type">
+    <option value="counter">逆流式 (Counter-flow)</option>
+    <option value="cross">橫流式 (Cross-flow)</option>
+  </select>
+  <label>季節</label>
+  <select id="season">
+    <option value="summer">夏季 (C=1.0)</option>
+    <option value="winter">冬季 (C=0.8)</option>
+  </select>
+  <label>濃縮倍數 (COC)</label>
+  <input type="number" id="COC" value="3.0" min="1.1" max="15.0" step="0.5">
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main" id="mainContent">
+  <div class="main-title">💧 冷卻水塔水蒸發量計算與分析系統</div>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <!-- Metric cards -->
+  <div class="metrics-row" id="metricsRow">
+    <div class="metric-card"><h3>蒸發水量 (Merkel)</h3><div class="value" id="m_evap">-</div><p>m³/h</p></div>
+    <div class="metric-card"><h3>總補給水量</h3><div class="value" id="m_total">-</div><p>m³/h</p></div>
+    <div class="metric-card"><h3>冷卻效率</h3><div class="value" id="m_eff">-</div><p></p></div>
+    <div class="metric-card"><h3>氣水比 (L/G)</h3><div class="value" id="m_lg">-</div><p></p></div>
+    <div class="metric-card"><h3>每日補水量</h3><div class="value" id="m_daily">-</div><p>m³/日</p></div>
+  </div>
+
+  <!-- Comparison tables -->
+  <div class="section-header">📊 計算結果比較</div>
+  <div class="tables-row">
+    <div class="table-wrap">
+      <h4>簡易公式 vs 焓差法</h4>
+      <table id="tblComparison">
+        <thead><tr><th>計算方法</th><th>蒸發水量 (m³/h)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <h4>水損失明細</h4>
+      <table id="tblLoss">
+        <thead><tr><th>項目</th><th>流量 (m³/h)</th><th>佔比 (%)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="section-header">📈 圖表分析</div>
+  <div class="charts-grid">
+    <div class="chart-box"><canvas id="chart1"></canvas><div class="chart-conclusion" id="conc1"></div></div>
+    <div class="chart-box"><canvas id="chart2"></canvas><div class="chart-conclusion" id="conc2"></div></div>
+    <div class="chart-box"><canvas id="chart3"></canvas><div class="chart-conclusion" id="conc3"></div></div>
+    <div class="chart-box"><canvas id="chart4"></canvas><div class="chart-conclusion" id="conc4"></div></div>
+  </div>
+
+  <!-- Detail data -->
+  <div class="section-header">📋 詳細計算數據</div>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapse(this)">🌡️ 環境空氣性質 <span class="arrow">▶</span></div>
+    <div class="collapsible-body"><table id="tblAir"><thead><tr><th>性質</th><th>入口</th><th>出口</th></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="collapsible">
+    <div class="collapsible-header" onclick="toggleCollapse(this)">🔧 Merkel 法詳細參數 <span class="arrow">▶</span></div>
+    <div class="collapsible-body"><table id="tblMerkel"><thead><tr><th>參數</th><th>數值</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <!-- Export -->
+  <div class="section-header">📥 匯出報告</div>
+  <div class="export-row">
+    <div class="export-card">
+      <h4>📄 PDF 分析報告</h4>
+      <div class="caption">含表格、圖表、結論建議</div>
+      <button class="export-btn btn-pdf" onclick="exportPDF()">⬇️ 下載 PDF 報告</button>
+    </div>
+    <div class="export-card">
+      <h4>📝 Word 報告文件</h4>
+      <div class="caption">含公式說明、圖表結語、附錄</div>
+      <button class="export-btn btn-word" onclick="exportWord()">⬇️ 下載 Word 文件</button>
+    </div>
+    <div class="export-card">
+      <h4>📊 Excel 計算表</h4>
+      <div class="caption">含逐步公式、可編輯</div>
+      <button class="export-btn btn-excel" onclick="exportExcel()">⬇️ 下載 Excel 檔案</button>
+    </div>
+  </div>
+
+  <div class="footer">冷卻水塔蒸發量計算系統 v1.0 ｜ 計算方法：簡易經驗公式 &amp; Merkel 焓差法</div>
+</div>
+
+<script>
+// =============================================
+// Calculation Functions (ported from Python)
+// =============================================
+
+function saturation_pressure(T) {
+  if (T < 0) {
+    return 0.61115 * Math.exp((23.036 - T / 333.7) * T / (279.82 + T));
+  }
+  return 0.61078 * Math.exp(17.27 * T / (T + 237.3));
+}
+
+function humidity_ratio(Tdb, Twb, P) {
+  P = P || 101.325;
+  var Pws_wb = saturation_pressure(Twb);
+  var Ws_wb = 0.622 * Pws_wb / (P - Pws_wb);
+  var W = ((2501 - 2.326 * Twb) * Ws_wb - 1.006 * (Tdb - Twb)) / (2501 + 1.86 * Tdb - 4.186 * Twb);
+  return Math.max(W, 0);
+}
+
+function humidity_ratio_saturated(T, P) {
+  P = P || 101.325;
+  var Ps = saturation_pressure(T);
+  if (Ps >= P) return 0.622;
+  return 0.622 * Ps / (P - Ps);
+}
+
+function enthalpy_moist_air(T, W) {
+  return 1.006 * T + W * (2501 + 1.86 * T);
+}
+
+function enthalpy_saturated(T, P) {
+  P = P || 101.325;
+  var Ws = humidity_ratio_saturated(T, P);
+  return enthalpy_moist_air(T, Ws);
+}
+
+function relative_humidity(Tdb, Twb, P) {
+  P = P || 101.325;
+  var W = humidity_ratio(Tdb, Twb, P);
+  var Ps = saturation_pressure(Tdb);
+  var Pw = W * P / (0.622 + W);
+  return Math.min(Math.max(Pw / Ps * 100, 0), 100);
+}
+
+function simple_evaporation(Q, T_in, T_out, season) {
+  var C = (season === 'summer') ? 1.0 : 0.8;
+  var delta_T = T_in - T_out;
+  return C * delta_T * Q / 600;
+}
+
+function merkel_integral(T_out, T_in, Q, G, KaV_L, P, n_steps) {
+  KaV_L = KaV_L || 1.5;
+  P = P || 101.325;
+  n_steps = n_steps || 50;
+
+  var rho_w = 1000, Cp_w = 4.186, rho_a = 1.2;
+  var L = Q * rho_w / 3600;
+  var G_mass = G * rho_a / 3600;
+  var LG_ratio = G_mass > 0 ? L / G_mass : Infinity;
+  var delta_T = T_in - T_out;
+  var dT = delta_T / n_steps;
+
+  var merkel_number = 0;
+  var temperatures = [], enthalpies_sat = [], enthalpies_air = [];
+
+  var T_wb_in = T_out > 10 ? T_out - 5 : T_out - 2;
+  var W_in = humidity_ratio_saturated(T_wb_in, P) * 0.6;
+  var h_air = enthalpy_moist_air(T_wb_in, W_in);
+
+  for (var i = 0; i <= n_steps; i++) {
+    var T_w = T_out + i * dT;
+    var h_sat = enthalpy_saturated(T_w, P);
+    temperatures.push(T_w);
+    enthalpies_sat.push(h_sat);
+    enthalpies_air.push(h_air);
+
+    var diff = h_sat - h_air;
+    if (diff <= 0) diff = 0.1;
+
+    if (i === 0 || i === n_steps) {
+      merkel_number += Cp_w / diff;
+    } else if (i % 2 === 1) {
+      merkel_number += 4 * Cp_w / diff;
+    } else {
+      merkel_number += 2 * Cp_w / diff;
+    }
+
+    if (i < n_steps) {
+      var dh_air = G_mass > 0 ? (L * Cp_w * dT) / G_mass : 0;
+      h_air += dh_air;
+    }
+  }
+  merkel_number *= dT / 3;
+
+  var W_out_approx = humidity_ratio_saturated((T_in + T_out) / 2, P) * 0.85;
+  var delta_W = W_out_approx - W_in;
+  var E_mass = G_mass * Math.max(delta_W, 0);
+  var E_volume = E_mass / rho_w * 3600;
+
+  var T_approach = T_out - T_wb_in;
+  var T_range = T_in - T_out;
+  var efficiency = (T_range + T_approach) > 0 ? T_range / (T_range + T_approach) * 100 : 0;
+
+  var T_air_out = T_out + (T_in - T_out) * 0.7;
+  var W_air_out = W_in + delta_W;
+  var h_air_out = enthalpy_moist_air(T_air_out, W_air_out);
+
+  return {
+    evaporation_rate: E_volume,
+    evaporation_mass: E_mass * 3600,
+    LG_ratio: LG_ratio,
+    merkel_number: merkel_number,
+    efficiency: efficiency,
+    T_approach: T_approach,
+    T_range: T_range,
+    T_air_out: T_air_out,
+    W_air_out: W_air_out,
+    h_air_out: h_air_out,
+    temperatures: temperatures,
+    enthalpies_sat: enthalpies_sat,
+    enthalpies_air: enthalpies_air
+  };
+}
+
+function calculate_water_losses(Q, T_in, T_out, G, tower_type, season, COC, KaV_L, Tdb, Twb, P) {
+  P = P || 101.325;
+  var E_simple = simple_evaporation(Q, T_in, T_out, season);
+  var merkel_result = merkel_integral(T_out, T_in, Q, G, KaV_L, P);
+  var E_merkel = merkel_result.evaporation_rate;
+
+  var splash_rate = (tower_type === 'counter') ? 0.001 : 0.003;
+  var E_splash = Q * splash_rate;
+
+  var E_blowdown = COC > 1 ? E_merkel / (COC - 1) : E_merkel;
+  var E_total = E_merkel + E_splash + E_blowdown;
+
+  var W_in = humidity_ratio(Tdb, Twb, P);
+  var h_in = enthalpy_moist_air(Tdb, W_in);
+  var RH = relative_humidity(Tdb, Twb, P);
+
+  return {
+    E_simple: E_simple,
+    E_merkel: E_merkel,
+    E_splash: E_splash,
+    E_blowdown: E_blowdown,
+    E_total: E_total,
+    merkel_details: merkel_result,
+    W_inlet: W_in,
+    h_inlet: h_in,
+    RH: RH,
+    splash_rate_pct: splash_rate * 100,
+    evap_pct: E_total > 0 ? E_merkel / E_total * 100 : 0,
+    splash_pct: E_total > 0 ? E_splash / E_total * 100 : 0,
+    blowdown_pct: E_total > 0 ? E_blowdown / E_total * 100 : 0
+  };
+}
+
+function generate_chart_conclusions(results, params) {
+  var md = results.merkel_details;
+  var COC = params.COC;
+  var conclusions = {};
+
+  // Chart 1
+  var c1 = '蒸發損失佔總補給水量的 ' + results.evap_pct.toFixed(1) + '%，為主要水損失來源。';
+  if (results.blowdown_pct > 30) {
+    c1 += '排污損失佔 ' + results.blowdown_pct.toFixed(1) + '%，比例偏高，建議提高濃縮倍數以降低排污量。';
+  } else {
+    c1 += '排污損失佔 ' + results.blowdown_pct.toFixed(1) + '%，在合理範圍內。';
+  }
+  c1 += '飛濺損失佔 ' + results.splash_pct.toFixed(1) + '%，屬正常範圍。';
+  conclusions.water_loss_pie = c1;
+
+  // Chart 2
+  var c2 = '冷卻範圍為 ' + md.T_range.toFixed(1) + '°C，逼近溫度為 ' + md.T_approach.toFixed(1) + '°C，冷卻效率 ' + md.efficiency.toFixed(1) + '%。';
+  if (md.efficiency > 70) {
+    c2 += '飽和焓與空氣焓之間的驅動力充足，水塔熱交換效果良好。';
+  } else if (md.efficiency > 50) {
+    c2 += '焓差驅動力尚可，但仍有優化空間，可考慮增加填料面積或風量。';
+  } else {
+    c2 += '焓差驅動力不足，建議檢查填料狀態、風扇運轉效率及水分配是否均勻。';
+  }
+  conclusions.cooling_curve = c2;
+
+  // Chart 3
+  var bd_at_coc3 = COC !== 3 ? results.E_merkel / (3 - 1) : results.E_blowdown;
+  var bd_at_coc6 = results.E_merkel / (6 - 1);
+  var save_pct = (1 - (results.E_merkel + results.E_splash + bd_at_coc6) / (results.E_merkel + results.E_splash + bd_at_coc3)) * 100;
+  var c3 = '目前濃縮倍數為 ' + COC.toFixed(1) + '。';
+  if (COC < 3) {
+    c3 += '若提升至 COC=6，總補給水量可減少約 ' + save_pct.toFixed(1) + '%。建議在水質允許的條件下提高濃縮倍數以節約用水。';
+  } else if (COC < 5) {
+    c3 += '濃縮倍數在合理範圍，若進一步提高至 6 可再節水約 ' + save_pct.toFixed(1) + '%，但需注意結垢與腐蝕風險。';
+  } else {
+    c3 += '濃縮倍數已較高，繼續提升節水效益遞減，需特別注意水質管理避免結垢。';
+  }
+  conclusions.coc_trend = c3;
+
+  // Chart 4
+  var c4 = '工作溫度範圍為 ' + params.T_out.toFixed(1) + '~' + params.T_in.toFixed(1) + '°C。';
+  c4 += '在此區間內，飽和空氣焓值隨溫度呈指數上升，表示高溫段的蒸發驅動力顯著大於低溫段。';
+  if (md.T_range > 8) {
+    c4 += '溫差較大，水塔承擔的熱負荷高，需確保足夠的風量與填料面積。';
+  } else {
+    c4 += '溫差適中，水塔熱負荷在正常範圍。';
+  }
+  conclusions.temp_enthalpy = c4;
+
+  return conclusions;
+}
+
+// =============================================
+// Chart instances (global for destroy/recreate)
+// =============================================
+var chartInstances = [null, null, null, null];
+
+// =============================================
+// UI Update
+// =============================================
+
+function getInputs() {
+  return {
+    project_name: document.getElementById('project_name').value,
+    engineer: document.getElementById('engineer').value,
+    calc_date: document.getElementById('calc_date').value,
+    Q: parseFloat(document.getElementById('Q').value),
+    T_in: parseFloat(document.getElementById('T_in').value),
+    T_out: parseFloat(document.getElementById('T_out').value),
+    Tdb: parseFloat(document.getElementById('Tdb').value),
+    Twb: parseFloat(document.getElementById('Twb').value),
+    G: parseFloat(document.getElementById('G').value),
+    KaV_L: parseFloat(document.getElementById('KaV_L').value),
+    tower_type: document.getElementById('tower_type').value,
+    season: document.getElementById('season').value,
+    COC: parseFloat(document.getElementById('COC').value),
+    P: 101.325
+  };
+}
+
+function recalculate() {
+  var p = getInputs();
+  var errEl = document.getElementById('errorBanner');
+
+  // Validation
+  if (p.T_in <= p.T_out) {
+    errEl.textContent = '⚠️ 進水溫度必須大於出水溫度！';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (p.Twb >= p.Tdb) {
+    errEl.textContent = '⚠️ 濕球溫度必須小於乾球溫度！';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+
+  var results = calculate_water_losses(p.Q, p.T_in, p.T_out, p.G, p.tower_type, p.season, p.COC, p.KaV_L, p.Tdb, p.Twb, p.P);
+  var md = results.merkel_details;
+  var conclusions = generate_chart_conclusions(results, p);
+
+  // Store for export
+  window._lastResults = results;
+  window._lastParams = p;
+  window._lastConclusions = conclusions;
+
+  // Metric cards
+  document.getElementById('m_evap').textContent = results.E_merkel.toFixed(4);
+  document.getElementById('m_total').textContent = results.E_total.toFixed(4);
+  document.getElementById('m_eff').textContent = md.efficiency.toFixed(1) + '%';
+  document.getElementById('m_lg').textContent = md.LG_ratio.toFixed(3);
+  document.getElementById('m_daily').textContent = (results.E_total * 24).toFixed(1);
+
+  // Comparison table
+  var diffRate = results.E_simple > 0 ? ((results.E_merkel / results.E_simple * 100) - 100).toFixed(1) + '%' : '-';
+  document.querySelector('#tblComparison tbody').innerHTML =
+    '<tr><td>簡易經驗公式</td><td>' + results.E_simple.toFixed(4) + '</td></tr>' +
+    '<tr><td>Merkel 焓差法</td><td>' + results.E_merkel.toFixed(4) + '</td></tr>' +
+    '<tr><td>差異比率</td><td>' + diffRate + '</td></tr>';
+
+  // Loss table
+  document.querySelector('#tblLoss tbody').innerHTML =
+    '<tr><td>蒸發損失</td><td>' + results.E_merkel.toFixed(4) + '</td><td>' + results.evap_pct.toFixed(1) + '</td></tr>' +
+    '<tr><td>飛濺損失</td><td>' + results.E_splash.toFixed(4) + '</td><td>' + results.splash_pct.toFixed(1) + '</td></tr>' +
+    '<tr><td>排污損失</td><td>' + results.E_blowdown.toFixed(4) + '</td><td>' + results.blowdown_pct.toFixed(1) + '</td></tr>' +
+    '<tr><td><strong>總補給水量</strong></td><td><strong>' + results.E_total.toFixed(4) + '</strong></td><td>100.0</td></tr>';
+
+  // Detail tables
+  document.querySelector('#tblAir tbody').innerHTML =
+    '<tr><td>溫度</td><td>' + p.Tdb.toFixed(1) + ' °C</td><td>' + md.T_air_out.toFixed(1) + ' °C</td></tr>' +
+    '<tr><td>比濕度</td><td>' + results.W_inlet.toFixed(5) + ' kg/kg</td><td>' + md.W_air_out.toFixed(5) + ' kg/kg</td></tr>' +
+    '<tr><td>焓值</td><td>' + results.h_inlet.toFixed(2) + ' kJ/kg</td><td>' + md.h_air_out.toFixed(2) + ' kJ/kg</td></tr>' +
+    '<tr><td>相對濕度</td><td>' + results.RH.toFixed(1) + '%</td><td>-</td></tr>';
+
+  document.querySelector('#tblMerkel tbody').innerHTML =
+    '<tr><td>氣水比 (L/G)</td><td>' + md.LG_ratio.toFixed(3) + '</td></tr>' +
+    '<tr><td>Merkel 數</td><td>' + md.merkel_number.toFixed(3) + '</td></tr>' +
+    '<tr><td>逼近溫度</td><td>' + md.T_approach.toFixed(1) + ' °C</td></tr>' +
+    '<tr><td>冷卻範圍</td><td>' + md.T_range.toFixed(1) + ' °C</td></tr>' +
+    '<tr><td>冷卻效率</td><td>' + md.efficiency.toFixed(1) + '%</td></tr>';
+
+  // Conclusions
+  document.getElementById('conc1').textContent = conclusions.water_loss_pie;
+  document.getElementById('conc2').textContent = conclusions.cooling_curve;
+  document.getElementById('conc3').textContent = conclusions.coc_trend;
+  document.getElementById('conc4').textContent = conclusions.temp_enthalpy;
+
+  // Charts
+  renderCharts(results, p);
+}
+
+function renderCharts(results, params) {
+  var md = results.merkel_details;
+
+  // Destroy old charts
+  for (var i = 0; i < 4; i++) {
+    if (chartInstances[i]) { chartInstances[i].destroy(); chartInstances[i] = null; }
+  }
+
+  // Chart 1: Doughnut - water loss
+  chartInstances[0] = new Chart(document.getElementById('chart1'), {
+    type: 'doughnut',
+    data: {
+      labels: ['蒸發損失', '飛濺損失', '排污損失'],
+      datasets: [{
+        data: [results.evap_pct, results.splash_pct, results.blowdown_pct],
+        backgroundColor: ['#3498db', '#e74c3c', '#f39c12'],
+        borderWidth: 2, borderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: '水損失分布比例', color: '#1a5276', font: { size: 15, weight: 'bold' } },
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': ' + ctx.parsed.toFixed(1) + '%'; } } }
+      }
+    }
+  });
+
+  // Chart 2: Cooling curve
+  // Subsample for readability
+  var step2 = Math.max(1, Math.floor(md.temperatures.length / 20));
+  var t2 = [], hs2 = [], ha2 = [];
+  for (var i = 0; i < md.temperatures.length; i += step2) {
+    t2.push(md.temperatures[i].toFixed(1));
+    hs2.push(md.enthalpies_sat[i]);
+    ha2.push(md.enthalpies_air[i]);
+  }
+  chartInstances[1] = new Chart(document.getElementById('chart2'), {
+    type: 'line',
+    data: {
+      labels: t2,
+      datasets: [
+        { label: '飽和空氣焓值 (h_s)', data: hs2, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.08)', fill: false, tension: 0.3, pointRadius: 2 },
+        { label: '空氣焓值 (h_a)', data: ha2, borderColor: '#2980b9', backgroundColor: 'rgba(41,128,185,0.08)', fill: '-1', tension: 0.3, pointRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: '冷卻曲線（焓值 vs 溫度）', color: '#1a5276', font: { size: 15, weight: 'bold' } },
+        filler: { propagate: true }
+      },
+      scales: {
+        x: { title: { display: true, text: '水溫 (°C)' } },
+        y: { title: { display: true, text: '焓值 (kJ/kg)' } }
+      }
+    }
+  });
+
+  // Chart 3: COC vs makeup
+  var cocVals = [], totals3 = [], blowdowns3 = [];
+  for (var c = 1.5; c <= 10.0; c += 0.5) {
+    cocVals.push(c.toFixed(1));
+    var bd = results.E_merkel / (c - 1);
+    blowdowns3.push(bd);
+    totals3.push(results.E_merkel + results.E_splash + bd);
+  }
+  chartInstances[2] = new Chart(document.getElementById('chart3'), {
+    type: 'line',
+    data: {
+      labels: cocVals,
+      datasets: [
+        { label: '總補給水量', data: totals3, borderColor: '#2980b9', pointRadius: 3, tension: 0.2 },
+        { label: '排污損失', data: blowdowns3, borderColor: '#e74c3c', borderDash: [6, 3], pointRadius: 3, tension: 0.2 },
+        { label: '蒸發量=' + results.E_merkel.toFixed(3), data: cocVals.map(function() { return results.E_merkel; }), borderColor: '#27ae60', borderDash: [3, 3], pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: '濃縮倍數 vs 補給水量', color: '#1a5276', font: { size: 15, weight: 'bold' } },
+        annotation: {}
+      },
+      scales: {
+        x: { title: { display: true, text: '濃縮倍數 (COC)' } },
+        y: { title: { display: true, text: '水量 (m³/h)' } }
+      }
+    }
+  });
+
+  // Chart 4: Temperature-enthalpy
+  var t4 = [], hsat4 = [];
+  for (var t = 10; t < 50; t += 0.5) {
+    t4.push(t.toFixed(1));
+    hsat4.push(enthalpy_saturated(t));
+  }
+  // Build datasets: shaded working range via a separate dataset
+  var workLow = [], workHigh = [];
+  var yMax = Math.max.apply(null, hsat4);
+  for (var j = 0; j < t4.length; j++) {
+    var tv = parseFloat(t4[j]);
+    if (tv >= params.T_out && tv <= params.T_in) {
+      workLow.push(0);
+      workHigh.push(yMax * 1.05);
+    } else {
+      workLow.push(null);
+      workHigh.push(null);
+    }
+  }
+  chartInstances[3] = new Chart(document.getElementById('chart4'), {
+    type: 'line',
+    data: {
+      labels: t4,
+      datasets: [
+        { label: '工作範圍 (' + params.T_out + '-' + params.T_in + '°C)', data: workHigh, backgroundColor: 'rgba(41,128,185,0.12)', borderColor: 'transparent', fill: true, pointRadius: 0, spanGaps: false },
+        { label: '飽和空氣焓值曲線', data: hsat4, borderColor: '#e74c3c', borderWidth: 2, fill: false, pointRadius: 0, tension: 0.3 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: '溫度 - 焓值關係圖', color: '#1a5276', font: { size: 15, weight: 'bold' } }
+      },
+      scales: {
+        x: { title: { display: true, text: '溫度 (°C)' }, ticks: { maxTicksLimit: 15 } },
+        y: { title: { display: true, text: '焓值 (kJ/kg 乾空氣)' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// =============================================
+// Collapsible panels
+// =============================================
+function toggleCollapse(el) {
+  el.classList.toggle('open');
+  var body = el.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+// =============================================
+// Export functions
+// =============================================
+
+function exportPDF() {
+  var mainEl = document.getElementById('mainContent');
+  html2canvas(mainEl, { scale: 1.5, useCORS: true, backgroundColor: '#f5f7fa' }).then(function(canvas) {
+    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    var pdf = new jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    var pW = pdf.internal.pageSize.getWidth();
+    var pH = pdf.internal.pageSize.getHeight();
+    var ratio = canvas.width / canvas.height;
+    var imgW = pW - 20;
+    var imgH = imgW / ratio;
+    var y = 10;
+    // If image taller than page, split across pages
+    if (imgH + 20 > pH) {
+      var pages = Math.ceil(imgH / (pH - 20));
+      var sliceH = canvas.height / pages;
+      for (var p = 0; p < pages; p++) {
+        if (p > 0) pdf.addPage();
+        var tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = canvas.width;
+        tmpCanvas.height = sliceH;
+        var ctx = tmpCanvas.getContext('2d');
+        ctx.drawImage(canvas, 0, p * sliceH, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        pdf.addImage(tmpCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 10, 10, imgW, (pH - 20));
+      }
+    } else {
+      pdf.addImage(imgData, 'JPEG', 10, y, imgW, imgH);
+    }
+    var d = window._lastParams.calc_date || new Date().toISOString().slice(0, 10);
+    pdf.save('冷卻水塔報告_' + d.replace(/-/g, '') + '.pdf');
+  });
+}
+
+function exportWord() {
+  var r = window._lastResults, p = window._lastParams, md = r.merkel_details, c = window._lastConclusions;
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>冷卻水塔報告</title>' +
+    '<style>body{font-family:"Microsoft JhengHei",sans-serif;padding:30px;}h1{color:#1a5276;text-align:center;}' +
+    'table{border-collapse:collapse;width:100%;margin:12px 0;}th{background:#1a5276;color:#fff;padding:8px;}' +
+    'td{padding:6px 8px;border:1px solid #ccc;}tr:nth-child(even){background:#eaf2f8;}' +
+    'h2{color:#1a5276;border-left:4px solid #1a5276;padding-left:8px;margin-top:20px;}' +
+    '.conclusion{background:#f9f9f9;padding:8px;border-left:3px solid #1a5276;margin:8px 0;font-size:0.9em;}</style></head><body>' +
+    '<h1>冷卻水塔水蒸發量計算與分析報告</h1>' +
+    '<p>專案：' + p.project_name + '　計算人員：' + p.engineer + '　日期：' + p.calc_date + '</p>' +
+    '<h2>計算結果摘要</h2><table><tr><th>項目</th><th>數值</th></tr>' +
+    '<tr><td>蒸發水量 (Merkel)</td><td>' + r.E_merkel.toFixed(4) + ' m³/h</td></tr>' +
+    '<tr><td>總補給水量</td><td>' + r.E_total.toFixed(4) + ' m³/h</td></tr>' +
+    '<tr><td>冷卻效率</td><td>' + md.efficiency.toFixed(1) + '%</td></tr>' +
+    '<tr><td>氣水比 (L/G)</td><td>' + md.LG_ratio.toFixed(3) + '</td></tr>' +
+    '<tr><td>每日補水量</td><td>' + (r.E_total * 24).toFixed(1) + ' m³/日</td></tr></table>' +
+    '<h2>水損失明細</h2><table><tr><th>項目</th><th>流量 (m³/h)</th><th>佔比 (%)</th></tr>' +
+    '<tr><td>蒸發損失</td><td>' + r.E_merkel.toFixed(4) + '</td><td>' + r.evap_pct.toFixed(1) + '</td></tr>' +
+    '<tr><td>飛濺損失</td><td>' + r.E_splash.toFixed(4) + '</td><td>' + r.splash_pct.toFixed(1) + '</td></tr>' +
+    '<tr><td>排污損失</td><td>' + r.E_blowdown.toFixed(4) + '</td><td>' + r.blowdown_pct.toFixed(1) + '</td></tr>' +
+    '<tr><td><b>總補給水量</b></td><td><b>' + r.E_total.toFixed(4) + '</b></td><td>100.0</td></tr></table>' +
+    '<h2>圖表分析結語</h2>' +
+    '<p><b>水損失分布：</b></p><div class="conclusion">' + c.water_loss_pie + '</div>' +
+    '<p><b>冷卻曲線：</b></p><div class="conclusion">' + c.cooling_curve + '</div>' +
+    '<p><b>濃縮倍數趨勢：</b></p><div class="conclusion">' + c.coc_trend + '</div>' +
+    '<p><b>溫度-焓值關係：</b></p><div class="conclusion">' + c.temp_enthalpy + '</div>' +
+    '<h2>Merkel 法詳細參數</h2><table><tr><th>參數</th><th>數值</th></tr>' +
+    '<tr><td>氣水比 (L/G)</td><td>' + md.LG_ratio.toFixed(3) + '</td></tr>' +
+    '<tr><td>Merkel 數</td><td>' + md.merkel_number.toFixed(3) + '</td></tr>' +
+    '<tr><td>逼近溫度</td><td>' + md.T_approach.toFixed(1) + ' °C</td></tr>' +
+    '<tr><td>冷卻範圍</td><td>' + md.T_range.toFixed(1) + ' °C</td></tr>' +
+    '<tr><td>冷卻效率</td><td>' + md.efficiency.toFixed(1) + '%</td></tr></table>' +
+    '</body></html>';
+  var blob = new Blob([html], { type: 'application/msword' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  var d = p.calc_date || new Date().toISOString().slice(0, 10);
+  a.download = '冷卻水塔報告_' + d.replace(/-/g, '') + '.doc';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportExcel() {
+  var r = window._lastResults, p = window._lastParams, md = r.merkel_details;
+  var wb = XLSX.utils.book_new();
+
+  // Sheet 1: Summary
+  var s1 = [
+    ['冷卻水塔水蒸發量計算報告'],
+    ['專案名稱', p.project_name],
+    ['計算人員', p.engineer],
+    ['日期', p.calc_date],
+    [],
+    ['計算結果摘要'],
+    ['項目', '數值', '單位'],
+    ['蒸發水量 (Merkel)', r.E_merkel, 'm³/h'],
+    ['蒸發水量 (簡易公式)', r.E_simple, 'm³/h'],
+    ['飛濺損失', r.E_splash, 'm³/h'],
+    ['排污損失', r.E_blowdown, 'm³/h'],
+    ['總補給水量', r.E_total, 'm³/h'],
+    ['每日補水量', r.E_total * 24, 'm³/日'],
+    [],
+    ['冷卻效率 (%)', md.efficiency],
+    ['氣水比 (L/G)', md.LG_ratio],
+    ['Merkel 數', md.merkel_number],
+    ['逼近溫度 (°C)', md.T_approach],
+    ['冷卻範圍 (°C)', md.T_range]
+  ];
+  var ws1 = XLSX.utils.aoa_to_sheet(s1);
+  XLSX.utils.book_append_sheet(wb, ws1, '計算摘要');
+
+  // Sheet 2: Input parameters
+  var s2 = [
+    ['輸入參數'],
+    ['參數', '數值', '單位'],
+    ['循環水量 Q', p.Q, 'm³/h'],
+    ['進水溫度 T_in', p.T_in, '°C'],
+    ['出水溫度 T_out', p.T_out, '°C'],
+    ['乾球溫度 Tdb', p.Tdb, '°C'],
+    ['濕球溫度 Twb', p.Twb, '°C'],
+    ['空氣流量 G', p.G, 'm³/h'],
+    ['填料特性係數 KaV/L', p.KaV_L, ''],
+    ['水塔類型', p.tower_type === 'counter' ? '逆流式' : '橫流式', ''],
+    ['季節', p.season === 'summer' ? '夏季' : '冬季', ''],
+    ['濃縮倍數 COC', p.COC, ''],
+    ['大氣壓力', p.P, 'kPa']
+  ];
+  var ws2 = XLSX.utils.aoa_to_sheet(s2);
+  XLSX.utils.book_append_sheet(wb, ws2, '輸入參數');
+
+  // Sheet 3: Cooling curve data
+  var s3 = [['溫度 (°C)', '飽和焓值 (kJ/kg)', '空氣焓值 (kJ/kg)']];
+  for (var i = 0; i < md.temperatures.length; i++) {
+    s3.push([md.temperatures[i], md.enthalpies_sat[i], md.enthalpies_air[i]]);
+  }
+  var ws3 = XLSX.utils.aoa_to_sheet(s3);
+  XLSX.utils.book_append_sheet(wb, ws3, '冷卻曲線數據');
+
+  // Sheet 4: COC sensitivity
+  var s4 = [['濃縮倍數 (COC)', '排污損失 (m³/h)', '總補給水量 (m³/h)']];
+  for (var c = 1.5; c <= 10.0; c += 0.5) {
+    var bd = r.E_merkel / (c - 1);
+    s4.push([c, bd, r.E_merkel + r.E_splash + bd]);
+  }
+  var ws4 = XLSX.utils.aoa_to_sheet(s4);
+  XLSX.utils.book_append_sheet(wb, ws4, 'COC敏感度');
+
+  var d = p.calc_date || new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, '冷卻水塔計算表_' + d.replace(/-/g, '') + '.xlsx');
+}
+
+// =============================================
+// Initialization
+// =============================================
+(function init() {
+  // Set default date to today
+  var today = new Date().toISOString().slice(0, 10);
+  document.getElementById('calc_date').value = today;
+
+  // Attach listeners to all inputs
+  var ids = ['Q', 'T_in', 'T_out', 'Tdb', 'Twb', 'G', 'KaV_L', 'tower_type', 'season', 'COC'];
+  ids.forEach(function(id) {
+    document.getElementById(id).addEventListener('input', recalculate);
+    document.getElementById(id).addEventListener('change', recalculate);
+  });
+
+  // Initial calculation
+  recalculate();
+})();
+</script>
+</body>
+</html>
