@@ -83,6 +83,7 @@ table tr:hover td { background: #d4e6f1; }
 .dva-card.design { background: linear-gradient(135deg, #2980b9, #1a5276); color: #fff; }
 .dva-card.actual { background: linear-gradient(135deg, #27ae60, #1e8449); color: #fff; }
 .dva-card.ratio  { background: linear-gradient(135deg, #f39c12, #d68910); color: #fff; }
+.dva-card.cti    { background: linear-gradient(135deg, #8e44ad, #6c3483); color: #fff; }
 .dva-card h4 { font-size: 0.75rem; opacity: 0.9; margin-bottom: 4px; }
 .dva-card .dval { font-size: 1.4rem; font-weight: 700; }
 .dva-card small { font-size: 0.7rem; opacity: 0.8; }
@@ -169,6 +170,13 @@ table tr:hover td { background: #d4e6f1; }
   <input type="number" id="design_T_wb" value="28" min="-10" max="45" step="0.5">
   <label>設計蒸發水量 (m³/h)（可選）</label>
   <input type="number" id="design_evap" value="" placeholder="留空則自動計算" min="0" step="0.1">
+  <label>設計風量 (m³/h)（CTI 性能必填）</label>
+  <input type="number" id="design_G" value="" placeholder="例：396000（6600 m³/min×60）" min="1" step="1000">
+  <label>設計乾球溫度 (°C)（可選）</label>
+  <input type="number" id="design_Tdb" value="" placeholder="留空則估算為設計濕球+5" min="-10" max="60" step="0.5">
+  <label>水塔特性指數 n（CTI 校正）</label>
+  <input type="number" id="n_char" value="0.6" min="0.3" max="1.5" step="0.05">
+  <small style="color:#888;font-size:0.82em">逆流薄膜填料≈0.5~0.7；噴濺填料≈0.8~1.0；依測試報告反推可>1.0（如本機台 n≈1.1）</small>
 </div>
 
 <!-- MAIN CONTENT -->
@@ -201,9 +209,14 @@ table tr:hover td { background: #d4e6f1; }
         <small>RT</small>
       </div>
       <div class="dva-card ratio">
-        <h4>達成率</h4>
+        <h4>熱量達成率</h4>
         <div class="dval" id="dva_ratio">-</div>
-        <small>實際 / 設計</small>
+        <small>Q×ΔT 比</small>
+      </div>
+      <div class="dva-card cti">
+        <h4>CTI 性能</h4>
+        <div class="dval" id="dva_cti_perf">-</div>
+        <small>NTU 標準法</small>
       </div>
     </div>
     <table class="dva-table" style="width:100%;border-collapse:collapse;">
@@ -335,7 +348,7 @@ function simple_evaporation(Q, T_in, T_out, season) {
   return C * delta_T * Q / 600;
 }
 
-function merkel_integral(T_out, T_in, Q, G, KaV_L, P, n_steps) {
+function merkel_integral(T_out, T_in, Q, G, KaV_L, P, n_steps, Twb, Tdb) {
   KaV_L = KaV_L || 1.5;
   P = P || 101.325;
   n_steps = n_steps || 50;
@@ -350,9 +363,11 @@ function merkel_integral(T_out, T_in, Q, G, KaV_L, P, n_steps) {
   var merkel_number = 0;
   var temperatures = [], enthalpies_sat = [], enthalpies_air = [];
 
-  var T_wb_in = T_out > 10 ? T_out - 5 : T_out - 2;
-  var W_in = humidity_ratio_saturated(T_wb_in, P) * 0.6;
-  var h_air = enthalpy_moist_air(T_wb_in, W_in);
+  // Use actual Twb/Tdb if provided, otherwise fall back to estimate
+  var T_wb_in = (Twb !== undefined && Twb !== null && !isNaN(Twb) && Twb > 0) ? Twb : (T_out > 10 ? T_out - 5 : T_out - 2);
+  var T_db_in = (Tdb !== undefined && Tdb !== null && !isNaN(Tdb) && Tdb > 0) ? Tdb : T_wb_in + 6;
+  var W_in = humidity_ratio(T_db_in, T_wb_in, P);
+  var h_air = enthalpy_moist_air(T_db_in, W_in);
 
   for (var i = 0; i <= n_steps; i++) {
     var T_w = T_out + i * dT;
@@ -412,7 +427,7 @@ function merkel_integral(T_out, T_in, Q, G, KaV_L, P, n_steps) {
 function calculate_water_losses(Q, T_in, T_out, G, tower_type, season, COC, KaV_L, Tdb, Twb, P) {
   P = P || 101.325;
   var E_simple = simple_evaporation(Q, T_in, T_out, season);
-  var merkel_result = merkel_integral(T_out, T_in, Q, G, KaV_L, P);
+  var merkel_result = merkel_integral(T_out, T_in, Q, G, KaV_L, P, 50, Twb, Tdb);
   var E_merkel = merkel_result.evaporation_rate;
 
   var splash_rate = (tower_type === 'counter') ? 0.001 : 0.003;
@@ -525,7 +540,10 @@ function getInputs() {
     design_T_in:  parseFloat(document.getElementById('design_T_in').value)  || 0,
     design_T_out: parseFloat(document.getElementById('design_T_out').value) || 0,
     design_T_wb:  parseFloat(document.getElementById('design_T_wb').value)  || 0,
-    design_evap:  parseFloat(document.getElementById('design_evap').value)  || null
+    design_evap:  parseFloat(document.getElementById('design_evap').value)  || null,
+    design_G:     parseFloat(document.getElementById('design_G').value)     || 0,
+    design_Tdb:   parseFloat(document.getElementById('design_Tdb').value)   || 0,
+    n_char:       parseFloat(document.getElementById('n_char').value)       || 0.6
   };
 }
 
@@ -582,6 +600,31 @@ function updateDesignActual(results, p) {
   var ratio = des_RT > 0 ? act_RT / des_RT * 100 : 0;
   document.getElementById('dva_ratio').textContent = ratio.toFixed(1) + '%';
 
+  // CTI NTU-based performance
+  var ctiPerfEl = document.getElementById('dva_cti_perf');
+  var cti_perf = null;
+  if (p.design_G > 0 && p.design_Q > 0 && p.design_T_in > 0 && p.design_T_out > 0 && p.design_T_wb > 0) {
+    var des_Tdb = p.design_Tdb > 0 ? p.design_Tdb : p.design_T_wb + 5;
+    var des_ntu = merkel_integral(p.design_T_out, p.design_T_in, p.design_Q, p.design_G, p.KaV_L, 101.325, 100, p.design_T_wb, des_Tdb);
+    var NTU_design = des_ntu.merkel_number;
+    var NTU_test   = md.merkel_number;
+    var LG_design  = des_ntu.LG_ratio;
+    var LG_test    = md.LG_ratio;
+    var n = (p.n_char > 0) ? p.n_char : 0.6;
+    var LG_factor  = (LG_design > 0 && LG_test > 0) ? Math.pow(LG_test / LG_design, -n) : 1;
+    var NTU_expected = NTU_design * LG_factor;
+    cti_perf = NTU_expected > 0 ? NTU_test / NTU_expected * 100 : null;
+    if (cti_perf !== null) {
+      ctiPerfEl.textContent = cti_perf.toFixed(1) + '%';
+      ctiPerfEl.style.color = cti_perf >= 95 ? '#a8e6cf' : cti_perf >= 85 ? '#ffd3a5' : '#ffb3b3';
+    } else {
+      ctiPerfEl.textContent = '-';
+    }
+  } else {
+    ctiPerfEl.textContent = '需填設計風量';
+    ctiPerfEl.style.fontSize = '0.85em';
+  }
+
   function row(label, des, act, unit, decimals) {
     if (des == null) return '';
     var desStr = typeof des === 'string' ? des : des.toFixed(decimals);
@@ -599,14 +642,15 @@ function updateDesignActual(results, p) {
   }
 
   var html = '';
-  html += row('冷卻能力', des_RT,      act_RT,       'RT',    1);
+  html += row('冷卻能力 (RT)', des_RT,   act_RT,       'RT',    1);
   html += row('循環水量', p.design_Q > 0 ? p.design_Q : null, p.Q, 'm³/h', 1);
   html += row('進水溫度', p.design_T_in  > 0 ? p.design_T_in  : null, p.T_in,  '°C', 1);
   html += row('出水溫度', p.design_T_out > 0 ? p.design_T_out : null, p.T_out, '°C', 1);
   html += row('濕球溫度', p.design_T_wb  > 0 ? p.design_T_wb  : null, p.Twb,   '°C', 1);
   html += row('蒸發水量', des_evap,     act_evap,     'm³/h',  4);
-  if (des_eff != null)     html += row('冷卻效率',  des_eff,  act_eff,      '%',     1);
+  if (des_eff != null)     html += row('冷卻效率',  des_eff,  act_eff,  '%',  1);
   if (des_approach != null)html += row('逼近溫度', des_approach, act_approach, '°C', 1);
+  if (cti_perf !== null)   html += row('CTI NTU 性能', 100, cti_perf, '%', 1);
   document.querySelector('#tblDva').innerHTML = html;
 
   // Conclusion
@@ -1525,7 +1569,8 @@ function exportExcel() {
 
   // Attach listeners to all inputs
   var ids = ['Q', 'T_in', 'T_out', 'Tdb', 'Twb', 'G', 'KaV_L', 'tower_type', 'season', 'COC',
-             'design_RT', 'design_Q', 'design_T_in', 'design_T_out', 'design_T_wb', 'design_evap'];
+             'design_RT', 'design_Q', 'design_T_in', 'design_T_out', 'design_T_wb', 'design_evap',
+             'design_G', 'design_Tdb', 'n_char'];
   ids.forEach(function(id) {
     document.getElementById(id).addEventListener('input', recalculate);
     document.getElementById(id).addEventListener('change', recalculate);
