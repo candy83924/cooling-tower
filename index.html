@@ -75,6 +75,28 @@ table tr:hover td { background: #d4e6f1; }
 .btn-word { background: #2980b9; }
 .btn-excel { background: #27ae60; }
 
+/* Design vs Actual comparison */
+.dva-section { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 20px; }
+.dva-grid { display: grid; grid-template-columns: 2fr 3fr; gap: 20px; align-items: start; }
+.dva-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.dva-card { border-radius: 8px; padding: 14px 12px; text-align: center; }
+.dva-card.design { background: linear-gradient(135deg, #2980b9, #1a5276); color: #fff; }
+.dva-card.actual { background: linear-gradient(135deg, #27ae60, #1e8449); color: #fff; }
+.dva-card.ratio  { background: linear-gradient(135deg, #f39c12, #d68910); color: #fff; }
+.dva-card h4 { font-size: 0.75rem; opacity: 0.9; margin-bottom: 4px; }
+.dva-card .dval { font-size: 1.4rem; font-weight: 700; }
+.dva-card small { font-size: 0.7rem; opacity: 0.8; }
+.dva-table th { background: #2c3e50; color: #fff; padding: 8px 10px; font-size: 0.83rem; }
+.dva-table td { padding: 7px 10px; font-size: 0.83rem; border-bottom: 1px solid #eee; }
+.dva-table tr:nth-child(even) td { background: #f8f9fa; }
+.dev-ok  { color: #27ae60; font-weight: 700; }
+.dev-warn{ color: #e67e22; font-weight: 700; }
+.dev-bad { color: #e74c3c; font-weight: 700; }
+.status-ok   { background: #d5f5e3; color: #1e8449; border-radius: 4px; padding: 2px 6px; font-size: 0.78rem; font-weight: 600; }
+.status-warn { background: #fdebd0; color: #a04000; border-radius: 4px; padding: 2px 6px; font-size: 0.78rem; font-weight: 600; }
+.status-bad  { background: #fadbd8; color: #922b21; border-radius: 4px; padding: 2px 6px; font-size: 0.78rem; font-weight: 600; }
+.dva-conclusion { font-size: 0.83rem; color: #444; line-height: 1.6; padding: 10px 14px; background: #eaf2f8; border-radius: 8px; border-left: 4px solid #1a5276; margin-top: 12px; }
+
 /* Footer */
 .footer { text-align: center; color: #999; font-size: 0.78rem; margin-top: 30px; padding: 16px 0; border-top: 1px solid #eee; }
 
@@ -133,6 +155,20 @@ table tr:hover td { background: #d4e6f1; }
   </select>
   <label>濃縮倍數 (COC)</label>
   <input type="number" id="COC" value="3.0" min="1.1" max="15.0" step="0.5">
+  <hr>
+  <h2>🏭 設計規格（Design）</h2>
+  <label>設計冷卻能力 (RT)</label>
+  <input type="number" id="design_RT" value="" placeholder="留空則由設計溫度自動計算" min="1" max="99999" step="10">
+  <label>設計循環水量 (m³/h)</label>
+  <input type="number" id="design_Q" value="500" min="1" max="50000" step="50">
+  <label>設計進水溫度 (°C)</label>
+  <input type="number" id="design_T_in" value="37" min="10" max="60" step="0.5">
+  <label>設計出水溫度 (°C)</label>
+  <input type="number" id="design_T_out" value="32" min="5" max="50" step="0.5">
+  <label>設計濕球溫度 (°C)</label>
+  <input type="number" id="design_T_wb" value="28" min="-10" max="45" step="0.5">
+  <label>設計蒸發水量 (m³/h)（可選）</label>
+  <input type="number" id="design_evap" value="" placeholder="留空則自動計算" min="0" step="0.1">
 </div>
 
 <!-- MAIN CONTENT -->
@@ -148,6 +184,42 @@ table tr:hover td { background: #d4e6f1; }
     <div class="metric-card"><h3>冷卻效率</h3><div class="value" id="m_eff">-</div><p></p></div>
     <div class="metric-card"><h3>氣水比 (L/G)</h3><div class="value" id="m_lg">-</div><p></p></div>
     <div class="metric-card"><h3>每日補水量</h3><div class="value" id="m_daily">-</div><p>m³/日</p></div>
+  </div>
+
+  <!-- Design vs Actual -->
+  <div class="section-header">🏭 冷卻能力：設計值 vs 實際值</div>
+  <div class="dva-section">
+    <div class="dva-cards">
+      <div class="dva-card design">
+        <h4>設計冷卻能力</h4>
+        <div class="dval" id="dva_design_rt">-</div>
+        <small>RT</small>
+      </div>
+      <div class="dva-card actual">
+        <h4>實際冷卻能力</h4>
+        <div class="dval" id="dva_actual_rt">-</div>
+        <small>RT</small>
+      </div>
+      <div class="dva-card ratio">
+        <h4>達成率</h4>
+        <div class="dval" id="dva_ratio">-</div>
+        <small>實際 / 設計</small>
+      </div>
+    </div>
+    <table class="dva-table" style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th>項目</th>
+          <th>設計值</th>
+          <th>實際值</th>
+          <th>偏差</th>
+          <th>單位</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody id="tblDva"></tbody>
+    </table>
+    <div class="dva-conclusion" id="dvaConclusion"></div>
   </div>
 
   <!-- Comparison tables -->
@@ -447,8 +519,112 @@ function getInputs() {
     tower_type: document.getElementById('tower_type').value,
     season: document.getElementById('season').value,
     COC: parseFloat(document.getElementById('COC').value),
-    P: 101.325
+    P: 101.325,
+    design_RT:    parseFloat(document.getElementById('design_RT').value)    || 0,
+    design_Q:     parseFloat(document.getElementById('design_Q').value)     || 0,
+    design_T_in:  parseFloat(document.getElementById('design_T_in').value)  || 0,
+    design_T_out: parseFloat(document.getElementById('design_T_out').value) || 0,
+    design_T_wb:  parseFloat(document.getElementById('design_T_wb').value)  || 0,
+    design_evap:  parseFloat(document.getElementById('design_evap').value)  || null
   };
+}
+
+function calcCoolingRT(Q, T_in, T_out) {
+  // 1 RT = 3.517 kW; Q_kW = Q(m³/h) × 1000(kg/m³) × 4.186(kJ/kg°C) × ΔT / 3600(s/h)
+  return Q * 4.186 * (T_in - T_out) / 3.6 / 3.517;
+}
+
+function devClass(pct) {
+  var a = Math.abs(pct);
+  if (a <= 5)  return 'dev-ok';
+  if (a <= 10) return 'dev-warn';
+  return 'dev-bad';
+}
+function statusBadge(pct) {
+  var a = Math.abs(pct);
+  if (a <= 5)  return '<span class="status-ok">✅ 正常</span>';
+  if (a <= 10) return '<span class="status-warn">⚠️ 注意</span>';
+  return '<span class="status-bad">❌ 偏差</span>';
+}
+function devStr(design, actual, decimals) {
+  if (!design || design === 0) return '-';
+  var pct = (actual - design) / design * 100;
+  var cls = devClass(pct);
+  return '<span class="' + cls + '">' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%</span>';
+}
+
+function updateDesignActual(results, p) {
+  var md = results.merkel_details;
+  var season = p.season;
+
+  // Actual values
+  var act_RT      = calcCoolingRT(p.Q, p.T_in, p.T_out);
+  var act_evap    = results.E_merkel;
+  var act_total   = results.E_total;
+  var act_eff     = md.efficiency;
+  var act_approach= md.T_approach;
+
+  // Design calculated values (auto)
+  var des_RT      = p.design_RT > 0 ? p.design_RT : calcCoolingRT(p.design_Q, p.design_T_in, p.design_T_out);
+  var des_dT      = p.design_T_in - p.design_T_out;
+  var C_design    = season === 'summer' ? 1.0 : 0.8;
+  var des_evap    = (p.design_evap && p.design_evap > 0)
+                    ? p.design_evap
+                    : (des_dT > 0 ? C_design * des_dT * p.design_Q / 600 : null);
+  var des_approach= (p.design_T_wb > 0 && p.design_T_out > p.design_T_wb)
+                    ? p.design_T_out - p.design_T_wb : null;
+  var des_eff     = (des_dT > 0 && des_approach != null)
+                    ? des_dT / (des_dT + des_approach) * 100 : null;
+
+  // Top cards
+  document.getElementById('dva_design_rt').textContent = des_RT.toFixed(1);
+  document.getElementById('dva_actual_rt').textContent  = act_RT.toFixed(1);
+  var ratio = des_RT > 0 ? act_RT / des_RT * 100 : 0;
+  document.getElementById('dva_ratio').textContent = ratio.toFixed(1) + '%';
+
+  function row(label, des, act, unit, decimals) {
+    if (des == null) return '';
+    var desStr = typeof des === 'string' ? des : des.toFixed(decimals);
+    var actStr = act.toFixed(decimals);
+    var dev = devStr(des, act, decimals);
+    var pct = (act - des) / des * 100;
+    return '<tr>' +
+      '<td>' + label + '</td>' +
+      '<td>' + desStr + '</td>' +
+      '<td>' + actStr + '</td>' +
+      '<td>' + dev + '</td>' +
+      '<td>' + unit + '</td>' +
+      '<td>' + statusBadge(pct) + '</td>' +
+      '</tr>';
+  }
+
+  var html = '';
+  html += row('冷卻能力', des_RT,      act_RT,       'RT',    1);
+  html += row('循環水量', p.design_Q > 0 ? p.design_Q : null, p.Q, 'm³/h', 1);
+  html += row('進水溫度', p.design_T_in  > 0 ? p.design_T_in  : null, p.T_in,  '°C', 1);
+  html += row('出水溫度', p.design_T_out > 0 ? p.design_T_out : null, p.T_out, '°C', 1);
+  html += row('濕球溫度', p.design_T_wb  > 0 ? p.design_T_wb  : null, p.Twb,   '°C', 1);
+  html += row('蒸發水量', des_evap,     act_evap,     'm³/h',  4);
+  if (des_eff != null)     html += row('冷卻效率',  des_eff,  act_eff,      '%',     1);
+  if (des_approach != null)html += row('逼近溫度', des_approach, act_approach, '°C', 1);
+  document.querySelector('#tblDva').innerHTML = html;
+
+  // Conclusion
+  var concl = '';
+  if (ratio >= 95) {
+    concl = '✅ 冷卻能力達成率 ' + ratio.toFixed(1) + '%，實際運轉表現符合設計規格，水塔性能良好。';
+  } else if (ratio >= 85) {
+    concl = '⚠️ 冷卻能力達成率 ' + ratio.toFixed(1) + '%，略低於設計值，建議檢查填料狀態、風扇效率及水分配是否均勻。';
+  } else {
+    concl = '❌ 冷卻能力達成率僅 ' + ratio.toFixed(1) + '%，顯著低於設計值，建議立即進行水塔性能診斷，排查填料堵塞、結垢或風量不足等問題。';
+  }
+  if (p.T_in > p.design_T_in) {
+    concl += ' 注意：實際進水溫度（' + p.T_in.toFixed(1) + '°C）高於設計值（' + p.design_T_in.toFixed(1) + '°C），負荷偏高。';
+  }
+  if (p.Twb > p.design_T_wb) {
+    concl += ' 環境濕球溫度（' + p.Twb.toFixed(1) + '°C）高於設計濕球（' + p.design_T_wb.toFixed(1) + '°C），冷卻能力受氣候影響下降。';
+  }
+  document.getElementById('dvaConclusion').textContent = concl;
 }
 
 function recalculate() {
@@ -517,6 +693,9 @@ function recalculate() {
   document.getElementById('conc2').textContent = conclusions.cooling_curve;
   document.getElementById('conc3').textContent = conclusions.coc_trend;
   document.getElementById('conc4').textContent = conclusions.temp_enthalpy;
+
+  // Design vs Actual
+  updateDesignActual(results, p);
 
   // Charts
   renderCharts(results, p);
@@ -1345,7 +1524,8 @@ function exportExcel() {
   document.getElementById('calc_date').value = today;
 
   // Attach listeners to all inputs
-  var ids = ['Q', 'T_in', 'T_out', 'Tdb', 'Twb', 'G', 'KaV_L', 'tower_type', 'season', 'COC'];
+  var ids = ['Q', 'T_in', 'T_out', 'Tdb', 'Twb', 'G', 'KaV_L', 'tower_type', 'season', 'COC',
+             'design_RT', 'design_Q', 'design_T_in', 'design_T_out', 'design_T_wb', 'design_evap'];
   ids.forEach(function(id) {
     document.getElementById(id).addEventListener('input', recalculate);
     document.getElementById(id).addEventListener('change', recalculate);
