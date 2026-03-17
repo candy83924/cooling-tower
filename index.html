@@ -199,8 +199,14 @@ table tr:hover td { background: #d4e6f1; }
   <label>設計乾球溫度 (°C)（可選）</label>
   <input type="number" id="design_Tdb" value="" placeholder="留空則估算為設計濕球+5" min="-10" max="60" step="0.5">
   <label>水塔特性指數 n（CTI 校正）</label>
-  <input type="number" id="n_char" value="0.6" min="0.3" max="1.5" step="0.05">
-  <small style="color:#888;font-size:0.82em">逆流薄膜填料≈0.5~0.7；噴濺填料≈0.8~1.0；依測試報告反推可>1.0（如本機台 n≈1.1）</small>
+  <input type="number" id="n_char" value="0.6" min="0.1" max="2.0" step="0.05">
+  <small style="color:#888;font-size:0.82em">逆流薄膜填料≈0.5~0.7；噴濺填料≈0.8~1.0</small>
+  <label>🔄 由報告性能反推 n</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input type="number" id="target_perf" value="" placeholder="輸入報告性能%（如 91.2）" min="1" max="200" step="0.1" style="flex:1">
+    <button type="button" onclick="solveN()" style="padding:6px 14px;background:#8e44ad;color:#fff;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">反推 n</button>
+  </div>
+  <div id="solveN_result" style="color:#8e44ad;font-size:0.9em;margin-top:4px"></div>
 </div>
 
 <!-- MAIN CONTENT -->
@@ -338,6 +344,47 @@ function getValueInM3h(inputId, selectId, lpmToM3h, m3minToM3h) {
   if (unit === 'lpm') return val * 60 / 1000;    // LPM → m³/h
   if (unit === 'm3min') return val * 60;           // m³/min → m³/h
   return val;                                       // already m³/h
+}
+
+// Solve for n given a target performance %
+// Formula: perf = NTU_test / [NTU_design * (LG_test/LG_design)^(-n)] * 100
+// Rearrange: n = -ln(NTU_test / (NTU_design * perf/100)) / ln(LG_test/LG_design)
+function solveN() {
+  var targetPerf = parseFloat(document.getElementById('target_perf').value);
+  var resultEl = document.getElementById('solveN_result');
+  if (!targetPerf || targetPerf <= 0) {
+    resultEl.textContent = '請輸入報告性能%';
+    return;
+  }
+  var p = getInputs();
+  if (p.design_G <= 0 || p.design_Q <= 0 || p.Q <= 0 || p.G <= 0) {
+    resultEl.textContent = '請先填寫完整的運轉參數和設計風量/水量';
+    return;
+  }
+  // Compute NTU for test and design
+  var test_ntu = merkel_integral(p.T_out, p.T_in, p.Q, p.G, p.KaV_L, 101.325, 100, p.Twb, p.Tdb);
+  var des_Tdb = p.design_Tdb > 0 ? p.design_Tdb : p.design_T_wb + 5;
+  var des_ntu = merkel_integral(p.design_T_out, p.design_T_in, p.design_Q, p.design_G, p.KaV_L, 101.325, 100, p.design_T_wb, des_Tdb);
+  var NTU_test = test_ntu.merkel_number;
+  var NTU_design = des_ntu.merkel_number;
+  var LG_test = test_ntu.LG_ratio;
+  var LG_design = des_ntu.LG_ratio;
+  var lgRatio = LG_test / LG_design;
+
+  if (lgRatio <= 0 || lgRatio === 1 || NTU_design <= 0 || NTU_test <= 0) {
+    resultEl.textContent = '無法計算：L/G 比相同或 NTU 為零';
+    return;
+  }
+  // n = -ln(NTU_test / (NTU_design * perf/100)) / ln(LG_test/LG_design)
+  var n = -Math.log(NTU_test / (NTU_design * targetPerf / 100)) / Math.log(lgRatio);
+  if (isNaN(n) || !isFinite(n) || n < 0) {
+    resultEl.textContent = '無法求解：請檢查輸入值是否合理';
+    return;
+  }
+  n = Math.round(n * 100) / 100; // round to 2 decimals
+  document.getElementById('n_char').value = n;
+  document.getElementById('n_char').dispatchEvent(new Event('change'));
+  resultEl.innerHTML = '✅ 反推結果：<b>n = ' + n + '</b>（已自動填入，CTI 性能將顯示 ' + targetPerf + '%）';
 }
 
 // =============================================
