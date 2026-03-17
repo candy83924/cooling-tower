@@ -127,8 +127,14 @@ table tr:hover td { background: #d4e6f1; }
   <input type="date" id="calc_date">
   <hr>
   <h2>🌊 運轉參數</h2>
-  <label>循環水量 Q (m³/h)</label>
-  <input type="number" id="Q" value="500" min="1" max="50000" step="50">
+  <label>循環水量 Q</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input type="number" id="Q" value="500" min="1" max="999999" step="50" style="flex:1">
+    <select id="Q_unit" style="width:auto;min-width:90px" onchange="convertUnit('Q','Q_unit',60/1000,1000/60)">
+      <option value="m3h">m³/h</option>
+      <option value="lpm">LPM</option>
+    </select>
+  </div>
   <label>進水溫度 T_in (°C)</label>
   <input type="number" id="T_in" value="37" min="10" max="60" step="0.5">
   <label>出水溫度 T_out (°C)</label>
@@ -139,8 +145,14 @@ table tr:hover td { background: #d4e6f1; }
   <label>濕球溫度 Twb (°C)</label>
   <input type="number" id="Twb" value="28" min="-10" max="45" step="0.5">
   <h2>💨 風量與填料</h2>
-  <label>空氣流量 G (m³/h)</label>
-  <input type="number" id="G" value="400000" min="100" max="500000" step="10000">
+  <label>空氣流量 G</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input type="number" id="G" value="400000" min="100" max="9999999" step="1000" style="flex:1">
+    <select id="G_unit" style="width:auto;min-width:100px" onchange="convertUnit('G','G_unit',60,1/60)">
+      <option value="m3h">m³/h</option>
+      <option value="m3min">m³/min</option>
+    </select>
+  </div>
   <label>填料特性係數 KaV/L</label>
   <input type="number" id="KaV_L" value="1.5" min="0.1" max="5.0" step="0.1">
   <h2>⚙️ 水塔設定</h2>
@@ -160,8 +172,14 @@ table tr:hover td { background: #d4e6f1; }
   <h2>🏭 設計規格（Design）</h2>
   <label>設計冷卻能力 (RT)</label>
   <input type="number" id="design_RT" value="" placeholder="留空則由設計溫度自動計算" min="1" max="99999" step="10">
-  <label>設計循環水量 (m³/h)</label>
-  <input type="number" id="design_Q" value="500" min="1" max="50000" step="50">
+  <label>設計循環水量</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input type="number" id="design_Q" value="500" min="1" max="999999" step="50" style="flex:1">
+    <select id="design_Q_unit" style="width:auto;min-width:90px" onchange="convertUnit('design_Q','design_Q_unit',60/1000,1000/60)">
+      <option value="m3h">m³/h</option>
+      <option value="lpm">LPM</option>
+    </select>
+  </div>
   <label>設計進水溫度 (°C)</label>
   <input type="number" id="design_T_in" value="37" min="10" max="60" step="0.5">
   <label>設計出水溫度 (°C)</label>
@@ -170,8 +188,14 @@ table tr:hover td { background: #d4e6f1; }
   <input type="number" id="design_T_wb" value="28" min="-10" max="45" step="0.5">
   <label>設計蒸發水量 (m³/h)（可選）</label>
   <input type="number" id="design_evap" value="" placeholder="留空則自動計算" min="0" step="0.1">
-  <label>設計風量 (m³/h)（CTI 性能必填）</label>
-  <input type="number" id="design_G" value="" placeholder="例：396000（6600 m³/min×60）" min="1" step="1000">
+  <label>設計風量（CTI 性能必填）</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input type="number" id="design_G" value="" placeholder="例：6600" min="1" step="100" style="flex:1">
+    <select id="design_G_unit" style="width:auto;min-width:100px" onchange="convertUnit('design_G','design_G_unit',60,1/60)">
+      <option value="m3h">m³/h</option>
+      <option value="m3min">m³/min</option>
+    </select>
+  </div>
   <label>設計乾球溫度 (°C)（可選）</label>
   <input type="number" id="design_Tdb" value="" placeholder="留空則估算為設計濕球+5" min="-10" max="60" step="0.5">
   <label>水塔特性指數 n（CTI 校正）</label>
@@ -298,6 +322,24 @@ table tr:hover td { background: #d4e6f1; }
 </div>
 
 <script>
+// =============================================
+// Unit conversion helper
+// When user switches unit dropdown, convert displayed value and trigger recalculate
+function convertUnit(inputId, selectId, toBaseMultiplier, fromBaseMultiplier) {
+  // toBaseMultiplier: multiply raw input by this to get m³/h (when switching TO base unit)
+  // fromBaseMultiplier: multiply m³/h by this to get display unit (when switching FROM base unit)
+  // We store internal value always in m³/h; display adapts to selected unit
+}
+
+// Get input value in m³/h regardless of displayed unit
+function getValueInM3h(inputId, selectId, lpmToM3h, m3minToM3h) {
+  var val = parseFloat(document.getElementById(inputId).value) || 0;
+  var unit = document.getElementById(selectId) ? document.getElementById(selectId).value : 'm3h';
+  if (unit === 'lpm') return val * 60 / 1000;    // LPM → m³/h
+  if (unit === 'm3min') return val * 60;           // m³/min → m³/h
+  return val;                                       // already m³/h
+}
+
 // =============================================
 // Calculation Functions (ported from Python)
 // =============================================
@@ -524,24 +566,24 @@ function getInputs() {
     project_name: document.getElementById('project_name').value,
     engineer: document.getElementById('engineer').value,
     calc_date: document.getElementById('calc_date').value,
-    Q: parseFloat(document.getElementById('Q').value),
+    Q: getValueInM3h('Q', 'Q_unit'),
     T_in: parseFloat(document.getElementById('T_in').value),
     T_out: parseFloat(document.getElementById('T_out').value),
     Tdb: parseFloat(document.getElementById('Tdb').value),
     Twb: parseFloat(document.getElementById('Twb').value),
-    G: parseFloat(document.getElementById('G').value),
+    G: getValueInM3h('G', 'G_unit'),
     KaV_L: parseFloat(document.getElementById('KaV_L').value),
     tower_type: document.getElementById('tower_type').value,
     season: document.getElementById('season').value,
     COC: parseFloat(document.getElementById('COC').value),
     P: 101.325,
     design_RT:    parseFloat(document.getElementById('design_RT').value)    || 0,
-    design_Q:     parseFloat(document.getElementById('design_Q').value)     || 0,
+    design_Q:     getValueInM3h('design_Q', 'design_Q_unit') || 0,
     design_T_in:  parseFloat(document.getElementById('design_T_in').value)  || 0,
     design_T_out: parseFloat(document.getElementById('design_T_out').value) || 0,
     design_T_wb:  parseFloat(document.getElementById('design_T_wb').value)  || 0,
     design_evap:  parseFloat(document.getElementById('design_evap').value)  || null,
-    design_G:     parseFloat(document.getElementById('design_G').value)     || 0,
+    design_G:     getValueInM3h('design_G', 'design_G_unit') || 0,
     design_Tdb:   parseFloat(document.getElementById('design_Tdb').value)   || 0,
     n_char:       parseFloat(document.getElementById('n_char').value)       || 0.6
   };
@@ -1570,7 +1612,8 @@ function exportExcel() {
   // Attach listeners to all inputs
   var ids = ['Q', 'T_in', 'T_out', 'Tdb', 'Twb', 'G', 'KaV_L', 'tower_type', 'season', 'COC',
              'design_RT', 'design_Q', 'design_T_in', 'design_T_out', 'design_T_wb', 'design_evap',
-             'design_G', 'design_Tdb', 'n_char'];
+             'design_G', 'design_Tdb', 'n_char',
+             'Q_unit', 'G_unit', 'design_Q_unit', 'design_G_unit'];
   ids.forEach(function(id) {
     document.getElementById(id).addEventListener('input', recalculate);
     document.getElementById(id).addEventListener('change', recalculate);
